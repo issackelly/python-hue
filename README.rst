@@ -11,6 +11,7 @@ Sample Usage is not docs::
 
     from hue import Hue;
     h = Hue(); # Initialize the class
+    h.station_ip = "192.168.1.222"  # Your base station IP
     h.get_state(); # Authenticate, bootstrap your lighting system
     l = h.lights.get('l3') # get bulb #3
     l.bri(0) # Dimmest
