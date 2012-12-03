@@ -142,7 +142,15 @@ class ExtendedColorLight:
         return self.set_state({"on": True})
 
     def off(self):
-        return self.set_state({"off": True})
+        return self.set_state({"on": False})
+        
+    def ct(self, ct):
+        # set color temp in mired scale
+        return self.set_state({"ct": ct})
+
+    def cct(self, cct):
+        # set color temp in degrees kelvin
+        return self.ct(1000000 / cct)
 
     def bri(self, level):
         # level between 0 and 255
