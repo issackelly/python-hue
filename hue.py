@@ -143,7 +143,7 @@ class ExtendedColorLight:
 
     def off(self):
         return self.set_state({"on": False})
-        
+
     def ct(self, ct):
         # set color temp in mired scale
         return self.set_state({"ct": ct})
@@ -158,7 +158,7 @@ class ExtendedColorLight:
 
     def toggle(self):
         self.update_state_cache()
-        if self.state["on"]:
+        if self.state and self.state.get('state', None) and self.state["state"].get("on", None):
             self.off()
         else:
             self.on()
