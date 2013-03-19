@@ -78,7 +78,6 @@ class Hue:
         logger.debug(resp)
         logger.debug(resp.content)
 
-
         resp = json.loads(resp.content)
 
         logger.debug(resp)
@@ -115,7 +114,6 @@ class Hue:
         self.last_update_state = datetime.datetime.now()
 
 
-
 class ExtendedColorLight:
     last_status_time = None
     light_id = None
@@ -128,13 +126,16 @@ class ExtendedColorLight:
 
     def update_state_cache(self, values=None):
         if not values:
-            values = self.hue.request(path = "/lights/%s" % self.light_id)
+            values = self.hue.request(path="/lights/%s" % self.light_id)
 
         self.state.update(values)
         self.last_status_time = datetime.datetime.now()
 
     def set_state(self, state):
-        self.hue.request(path="/lights/%s/state" % self.light_id, method="PUT", data=json.dumps(state))
+        self.hue.request(
+            path="/lights/%s/state" % self.light_id,
+            method="PUT",
+            data=json.dumps(state))
         self.update_state_cache()
         return self
 
@@ -158,7 +159,8 @@ class ExtendedColorLight:
 
     def toggle(self, transitiontime=5):
         self.update_state_cache()
-        if self.state and self.state.get('state', None) and self.state["state"].get("on", None):
+        if self.state and self.state.get(
+                'state', None) and self.state["state"].get("on", None):
             self.off(transitiontime)
         else:
             self.on(transitiontime)
@@ -183,7 +185,10 @@ class ExtendedColorLight:
         redScale = float(red) / 255.0
         greenScale = float(green) / 255.0
         blueScale = float(blue) / 255.0
-        colormodels.init(phosphor_red=colormodels.xyz_color(0.64843, 0.33086), phosphor_green=colormodels.xyz_color(0.4091,0.518), phosphor_blue=colormodels.xyz_color(0.167, 0.04))
+        colormodels.init(
+            phosphor_red=colormodels.xyz_color(0.64843, 0.33086),
+            phosphor_green=colormodels.xyz_color(0.4091, 0.518),
+            phosphor_blue=colormodels.xyz_color(0.167, 0.04))
         logger.debug(redScale, greenScale, blueScale)
         xyz = colormodels.irgb_color(red, green, blue)
         logger.debug(xyz)
@@ -192,11 +197,13 @@ class ExtendedColorLight:
         xyz = colormodels.xyz_normalize(xyz)
         logger.debug(xyz)
 
-        return self.set_state({"xy": [xyz[0], xyz[1]], "transitiontime": transitiontime})
+        return self.set_state(
+            {"xy": [xyz[0], xyz[1]], "transitiontime": transitiontime})
 
 
 class TooManyFailures(Exception):
     pass
+
 
 class CouldNotAuthenticate(Exception):
     pass
