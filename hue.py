@@ -78,7 +78,6 @@ class Hue:
         logger.debug(resp)
         logger.debug(resp.content)
 
-
         resp = json.loads(resp.content)
 
         logger.debug(resp)
@@ -115,7 +114,6 @@ class Hue:
         self.last_update_state = datetime.datetime.now()
 
 
-
 class ExtendedColorLight:
     last_status_time = None
     light_id = None
@@ -128,48 +126,52 @@ class ExtendedColorLight:
 
     def update_state_cache(self, values=None):
         if not values:
-            values = self.hue.request(path = "/lights/%s" % self.light_id)
+            values = self.hue.request(path="/lights/%s" % self.light_id)
 
         self.state.update(values)
         self.last_status_time = datetime.datetime.now()
 
     def set_state(self, state):
-        self.hue.request(path="/lights/%s/state" % self.light_id, method="PUT", data=json.dumps(state))
+        self.hue.request(
+            path="/lights/%s/state" % self.light_id,
+            method="PUT",
+            data=json.dumps(state))
         self.update_state_cache()
         return self
 
-    def on(self):
-        return self.set_state({"on": True})
+    def on(self, transitiontime=5):
+        return self.set_state({"on": True, "transitiontime": transitiontime})
 
-    def off(self):
-        return self.set_state({"on": False})
+    def off(self, transitiontime=5):
+        return self.set_state({"on": False, "transitiontime": transitiontime})
 
-    def ct(self, ct):
+    def ct(self, ct, transitiontime=5):
         # set color temp in mired scale
-        return self.set_state({"ct": ct})
+        return self.set_state({"ct": ct, "transitiontime": transitiontime})
 
-    def cct(self, cct):
+    def cct(self, cct, transitiontime=5):
         # set color temp in degrees kelvin
-        return self.ct(1000000 / cct)
+        return self.ct(1000000 / cct, transitiontime)
 
-    def bri(self, level):
+    def bri(self, level, transitiontime=5):
         # level between 0 and 255
-        return self.set_state({"bri": level})
+        return self.set_state({"bri": level, "transitiontime": transitiontime})
 
-    def toggle(self):
+    def toggle(self, transitiontime=5):
         self.update_state_cache()
-        if self.state and self.state.get('state', None) and self.state["state"].get("on", None):
-            self.off()
+        if self.state and self.state.get(
+                'state', None) and self.state["state"].get("on", None):
+            self.off(transitiontime)
         else:
-            self.on()
+            self.on(transitiontime)
 
     def alert(self, type="select"):
         return self.set_state({"alert": type})
 
-    def xy(self, x, y):
-        return self.set_state({"xy": [x, y]})
+    def xy(self, x, y, transitiontime=5):
+        return self.set_state({"xy": [x, y], "transitiontime": transitiontime})
 
-    def rgb(self, red, green=None, blue=None):
+    def rgb(self, red, green=None, blue=None, transitiontime=5):
         if isinstance(red, basestring):
             # assume a hex string is passed
             rstring = red
@@ -183,7 +185,10 @@ class ExtendedColorLight:
         redScale = float(red) / 255.0
         greenScale = float(green) / 255.0
         blueScale = float(blue) / 255.0
-        colormodels.init(phosphor_red=colormodels.xyz_color(0.64843, 0.33086), phosphor_green=colormodels.xyz_color(0.4091,0.518), phosphor_blue=colormodels.xyz_color(0.167, 0.04))
+        colormodels.init(
+            phosphor_red=colormodels.xyz_color(0.64843, 0.33086),
+            phosphor_green=colormodels.xyz_color(0.4091, 0.518),
+            phosphor_blue=colormodels.xyz_color(0.167, 0.04))
         logger.debug(redScale, greenScale, blueScale)
         xyz = colormodels.irgb_color(red, green, blue)
         logger.debug(xyz)
@@ -192,11 +197,13 @@ class ExtendedColorLight:
         xyz = colormodels.xyz_normalize(xyz)
         logger.debug(xyz)
 
-        return self.set_state({"xy": [xyz[0], xyz[1]]})
+        return self.set_state(
+            {"xy": [xyz[0], xyz[1]], "transitiontime": transitiontime})
 
 
 class TooManyFailures(Exception):
     pass
+
 
 class CouldNotAuthenticate(Exception):
     pass
