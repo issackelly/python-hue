@@ -1,0 +1,251 @@
+<html>
+<head>
+    <script src="/static/jquery-2.1.1.min.js"></script>
+    <script src="/static/socket-io.min.js"></script>
+
+    <style>
+        body {
+            font-family: Helvetica;
+            color: #333;
+        }
+        #cie {
+            width: 345px;
+            height: 272px;
+            overflow: none;
+            background: url(/static/cie-adjusted.png);
+            border: 1px solid #333;
+        }
+        #cie_spot {
+            position: absolute;
+            width: 15px;
+            height: 15px;
+            background-color: #333;
+            border-radius: 7.5px;
+        }
+        #bri {
+            width: 345px;
+            height: 25px;
+            border: 1px solid #333;
+            background: linear-gradient(to right, #000, #fff);
+        }
+        #bri_spot {
+            position: absolute;
+            width: 15px;
+            height: 15px;
+            background-color: orange;
+            border-radius: 7.5px;
+        }
+
+        table {
+            border-collapse: collapse;
+            overflow: scroll;
+            table-layout: fixed;
+            width: auto;
+            position: absolute;
+        }
+
+        table, th, td {
+            border: 1px solid black;
+        }
+
+        tr {
+            height: 15px;
+        }
+        th, td {
+            width: 20px;
+        }
+    </style>
+
+</head>
+<body>
+
+    <div id="choose_light">
+        <ul id="lights">
+        </ul>
+    </div>
+    <div id="light_changer">
+        <div id="bri"></div>
+        <div id="cie"></div>
+        <div id="bri_spot"></div>
+        <div id="cie_spot"></div>
+    </div>
+    <br/>
+    <div id="timeline">
+        <table>
+            <thead>
+                <tr>
+
+                </tr>
+            </thead>
+            <tbody>
+
+            </tbody>
+        </table>
+    </div>
+
+    <script type="text/javascript">
+    var i = 0;
+    var state = [];
+    var cie_offset, bri_offset, socket;
+    var light = 'l4';
+    var xy = [];
+    var lighttimerow;
+    var bri = 255;
+    var action_minutes = 25;
+    var frame_frequency_seconds = 10;
+    var frames = [];
+    var generic_frameset = [];
+
+    function xyBriToRgb(x, y, bri){
+        //Thanks stack overflow.
+        z = 1.0 - x - y;
+        Y = bri / 255.0; // Brightness of lamp
+        X = (Y / y) * x;
+        Z = (Y / y) * z;
+        r = X * 1.612 - Y * 0.203 - Z * 0.302;
+        g = -X * 0.509 + Y * 1.412 + Z * 0.066;
+        b = X * 0.026 - Y * 0.072 + Z * 0.962;
+        r = r <= 0.0031308 ? 12.92 * r : (1.0 + 0.055) * Math.pow(r, (1.0 / 2.4)) - 0.055;
+        g = g <= 0.0031308 ? 12.92 * g : (1.0 + 0.055) * Math.pow(g, (1.0 / 2.4)) - 0.055;
+        b = b <= 0.0031308 ? 12.92 * b : (1.0 + 0.055) * Math.pow(b, (1.0 / 2.4)) - 0.055;
+        maxValue = Math.max(r,g,b);
+        r /= maxValue;
+        g /= maxValue;
+        b /= maxValue;
+        r = r * 255;   if (r < 0) { r = 255 };
+        g = g * 255;   if (g < 0) { g = 255 };
+        b = b * 255;   if (b < 0) { b = 255 };
+        r = parseInt(r, 10);
+        g = parseInt(g, 10);
+        b = parseInt(b, 10);
+        return "rgb("+r+","+g+","+b+")"
+    }
+
+
+    function update_light(){
+        socket.emit('update_light', {
+            light: light,
+            state: {
+                "bri": bri,
+                "xy": xy,
+                "on": true,
+            }
+       })
+    }
+    function bri_pos(e){
+       if ($(this).offset())
+           bri_offset = $(this).offset();
+
+       $("#bri_spot").css({top: e.pageY, left: e.pageX});
+
+       var relX = parseInt((e.pageX - bri_offset.left) / $(this).width() * 255, 10)
+
+       bri = relX
+    }
+
+    function cie_pos(e){
+        //0.16 -> 0.675  (space of 0.515) + 0.16
+        //0.04 -> 0.52    (space of 0.48) + 0.04
+
+        //image 345 x 272
+
+       $("#cie_spot").css({top: e.pageY, left: e.pageX});
+
+
+       if ($(this).offset())
+           cie_offset = $(this).offset();
+
+       var relX = (e.pageX - cie_offset.left) / 345 * 0.515 + 0.1;
+       var relY = (272 - e.pageY + cie_offset.top) / 272 * 0.48 + 0.04
+       xy = [relX, relY]
+    }
+
+    function build_keyframe_spots(){
+        var $top = $("table thead tr");
+        lighttimerow = $("<tr></tr>");
+
+        frames_per_sec = 60 / frame_frequency_seconds;
+
+        var x = $("<td></td>").attr('data-frame', i);
+        var y = $("<th>Time</th>").attr('data-frame', i).width(120);
+
+        lighttimerow.append(x.clone())
+        $top.append(y.clone());
+
+        for(var i=0; i<(action_minutes * frames_per_sec); i++){
+            var x = $("<td></td>").attr('data-frame', i);
+            var y = $("<th></th>").attr('data-frame', i);
+            generic_frameset.push(null);
+
+            lighttimerow.append(x.clone())
+
+            if (i % frames_per_sec== 0) y.html(i / frames_per_sec)
+
+            $top.append(y.clone());
+        }
+        $("table").width(20 * i + 120)
+    }
+
+    $(document).ready(function(){
+        socket = io.connect('http://' + document.domain + ':' + location.port + '/lights');
+        build_keyframe_spots();
+
+        $("#cie").mousedown(function(e){
+            cie_offset = $(this).offset();
+            cie_pos(e)
+            $(this).mousemove(cie_pos
+            ).mouseup(function(){
+                $(this).off('mousemove')
+            })
+        });
+        $("#bri").mousedown(function(e){
+            bri_offset = $(this).offset();
+            bri_pos(e)
+            $(this).mousemove(bri_pos
+            ).mouseup(function(){
+                $(this).off('mousemove')
+            });
+        });
+
+        setInterval(update_light, 1000);
+
+        socket.on('state', function(msg) {
+            state = msg['data'];
+            //Update UI
+            if ($("tbody tr").length == 0){
+                $("tbody").html('');
+                frames = []
+                for (var key in state.lights) {
+                  if (state.lights.hasOwnProperty(key)) {
+                    $tr = lighttimerow.clone().attr('id', 'time' + key)
+                    $tr.find('td:first').attr('id', key).width(120).html(state.lights[key].name)
+                    $("tbody").append($tr);
+                    frames.push(generic_frameset);
+                  }
+                }
+                 $("tbody td").on('click', function(){
+                    $("td").removeClass('active');
+                    $(this).addClass('active');
+                    var ident = $(this).parent().find('td:first').addClass("active").attr('id')
+                    light = 'l' + ident;
+                    light_rep = state.lights[ident];
+                    xy = light_rep.state.xy;
+                    bri = light_rep.state.bri;
+                    frame = $(this).attr('data-frame')
+                    console.log(light, xy, bri, frame)
+                })
+            }
+
+            for (var key in state.lights) {
+                if (state.lights.hasOwnProperty(key)) {
+                    l = state.lights[key]
+                    $("table td#" + key).css({backgroundColor:xyBriToRgb(l.state.xy[0], l.state.xy[1], l.state.bri), opacity: l.state.bri / 255})
+                }
+            }
+
+        });
+
+    });
+    </script>
+</body>
+</html>
