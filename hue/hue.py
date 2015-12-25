@@ -7,7 +7,7 @@ from time import sleep
 import hashlib
 from colorpy import colormodels
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(filename='hue.log', level=logging.DEBUG)
 logger = logging.getLogger('hue')
 
 
@@ -113,6 +113,11 @@ class Hue:
 
         self.last_update_state = datetime.datetime.now()
 
+    def get_station_ip(self):
+        response = requests.get('https://www.meethue.com/api/nupnp')
+        ip = json.loads(response.content)[0]["internalipaddress"]
+        self.station_ip = ip
+
 
 class ExtendedColorLight:
     last_status_time = None
@@ -179,8 +184,6 @@ class ExtendedColorLight:
             green = int(rstring[3:5], 16)
             blue = int(rstring[5:], 16)
 
-        print red, green, blue
-
         # We need to convert the RGB value to Yxy.
         redScale = float(red) / 255.0
         greenScale = float(green) / 255.0
@@ -189,7 +192,7 @@ class ExtendedColorLight:
             phosphor_red=colormodels.xyz_color(0.64843, 0.33086),
             phosphor_green=colormodels.xyz_color(0.4091, 0.518),
             phosphor_blue=colormodels.xyz_color(0.167, 0.04))
-        logger.debug(redScale, greenScale, blueScale)
+        logger.debug("%s, %s, %s" % (redScale, greenScale, blueScale))
         xyz = colormodels.irgb_color(red, green, blue)
         logger.debug(xyz)
         xyz = colormodels.xyz_from_rgb(xyz)
