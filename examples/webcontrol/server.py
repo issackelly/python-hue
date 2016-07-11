@@ -28,6 +28,11 @@ def index():
     return render_template('index.html')
 
 
+@app.route('/scene')
+def scene():
+    return render_template('scene.html')
+
+
 @socketio.on('update_light', namespace='/lights')
 def message(message):
     print message

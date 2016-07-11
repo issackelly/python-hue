@@ -1,0 +1,456 @@
+<html>
+<head>
+  <script src="/static/jquery-2.1.1.min.js"></script>
+  <script src="/static/socket-io.min.js"></script>
+
+
+  <style>
+      body {
+        font-family: "Helvetica Neue";
+        color: #AAA;
+        background: #333;
+      }
+
+      table {
+        text-align: center;
+        border-collapse: collapse;
+        overflow: scroll;
+        table-layout: fixed;
+        width: auto;
+        position: absolute;
+        top:35;
+        left: 0;
+      }
+
+      table, th, td {
+        border: 1px solid black;
+      }
+
+      tr {
+        height: 15px;
+      }
+      th, td {
+        width: 49px;
+      }
+
+      #setup{
+        position:fixed;
+        top:25;
+        right: 25;
+        z-index:10;
+        background: #ccc;
+        width: 300px;
+        padding: 10px;
+        color: #333;
+      }
+
+      button{
+        background: #999;
+        color: #666;
+        border-radius: 0px;
+        margin-top: 10px;
+        padding: 15px;
+        width: 49%;
+        font-size: 20px;
+        border: 1px solid #666;
+      }
+
+      thead{
+        position:fixed;
+        top:0;
+        left:0;
+        z-index: 10;
+        background: #444444;
+      }
+      tbody tr:nth-child(odd) {
+        background-color: #363636;
+      }
+  </style>
+</head>
+<body>
+<div id="setup" style="float: right">
+  <dl>
+    <h3>No Light Second Chosen</h3>
+    <form>
+      <dt>X </dt>
+      <dd><input name="x"></dt>
+      <dt>Y </dt>
+      <dd><input name="y"></dt>
+      <dt>Transition Time </dt>
+      <dd><input name="transitiontime"></dt>
+      <dt>Brightness</dt>
+      <dd><input name="bri"></dt>
+      </dl>
+
+        <input name="transitioningfrom" type="hidden">
+        <input name="light" type="hidden">
+        <input name="second" type="hidden">
+        <input name="state" type="hidden">
+      <br/>
+      <button id="save">Save</button>
+      <button id="clear">Clear</button>
+      <hr/>
+      <p>Copy:<br/>
+      <input name="copy-light"><br/>
+      <input name="copy-second"><br/>
+      <button id="copy">Copy</button>
+      </p>
+
+      <hr/>
+      <button id="export">Export</button>
+
+      <br/>
+
+      <input type="file" id="fileinput" value="Import" accept="application/json">
+
+    </form>
+  </dl>
+</div>
+<table>
+    <thead>
+
+    </thead>
+    <tbody>
+
+    </tbody>
+</table>
+<script>
+LIGHTS = 9
+NAMES = {
+  "l1": "N"  ,
+  "l3": "NE" ,
+  "l2": "E"  ,
+  "l5": "SE" ,
+  "l6": "S"  ,
+  "l8": "SW" ,
+  "l7": "W"  ,
+  "l4": "NW" ,
+  "l9": "C"
+}
+
+
+SECONDS = 60 * 30
+var $r, $d;
+var light_frames = Array();
+
+$r = $("<tr><th></th></tr>");
+for (var j = 0; j < LIGHTS; j++){
+  $d = $("<th></th>")
+  $d.html(NAMES['l' + (j + 1)])
+  $d.attr('id', 'light-' + j);
+  $r.append($d);
+}
+$("thead").append($r);
+
+function xyBriToRgb(x, y, bri){
+  //Thanks stack overflow.
+  z = 1.0 - x - y;
+  Y = bri / 255.0; // Brightness of lamp
+  X = (Y / y) * x;
+  Z = (Y / y) * z;
+  r = X * 1.612 - Y * 0.203 - Z * 0.302;
+  g = -X * 0.509 + Y * 1.412 + Z * 0.066;
+  b = X * 0.026 - Y * 0.072 + Z * 0.962;
+  r = r <= 0.0031308 ? 12.92 * r : (1.0 + 0.055) * Math.pow(r, (1.0 / 2.4)) - 0.055;
+  g = g <= 0.0031308 ? 12.92 * g : (1.0 + 0.055) * Math.pow(g, (1.0 / 2.4)) - 0.055;
+  b = b <= 0.0031308 ? 12.92 * b : (1.0 + 0.055) * Math.pow(b, (1.0 / 2.4)) - 0.055;
+  maxValue = Math.max(r,g,b);
+  r /= maxValue;
+  g /= maxValue;
+  b /= maxValue;
+  r = r * 255;   if (r < 0) { r = 255 };
+  g = g * 255;   if (g < 0) { g = 255 };
+  b = b * 255;   if (b < 0) { b = 255 };
+  r = parseInt(r, 10);
+  g = parseInt(g, 10);
+  b = parseInt(b, 10);
+  o = parseFloat(bri / 255);
+  return "rgba("+r+","+g+","+b+", " +o+ ")"
+}
+
+load_cell = function(light, second){
+  console.log('loading', light, second)
+  $cell = $("#" + light + '-' + second);
+  if ($cell.attr('data-state') == 'transitioning'){
+
+  };
+
+  $("#setup").find("h3").html('Light ' + NAMES["l" + light] + ': Second ' + second);
+
+
+  $("#setup").find("[name=x]").val($cell.attr('data-x'));
+  $("#setup").find("[name=y]").val($cell.attr('data-y'));
+  $("#setup").find("[name=state]").val($cell.attr('data-state'));
+  $("#setup").find("[name=transitioningfrom]").val($cell.attr('data-transitioningfrom'));
+  $("#setup").find("[name=transitiontime]").val($cell.attr('data-transitiontime'));
+  $("#setup").find("[name=bri]").val($cell.attr('data-bri'));
+  $("#setup").find("[name=light]").val(light);
+  $("#setup").find("[name=second]").val(second);
+}
+
+save_cell = function(e){
+  light = parseInt($("#setup").find("[name=light]").val(), 10);
+  second = parseInt($("#setup").find("[name=second]").val(), 10);
+  console.log('saving', light, second);
+
+  var $cell = $("#" + light + '-' + second);
+  var $child;
+  var tt = parseInt($("#setup").find("[name=transitiontime]").val(), 10);
+  var x = parseFloat($("#setup").find("[name=x]").val());
+  var y = parseFloat($("#setup").find("[name=y]").val());
+  var bri = parseInt($("#setup").find("[name=bri]").val(), 10);
+  var rgb = xyBriToRgb(x, y, bri)
+
+  light_frames[second]["l"+light] = {
+    "bri": bri,
+    "xy": [x, y],
+    "transitiontime": tt
+  }
+
+  $cell.attr('data-x', $("#setup").find("[name=x]").val());
+  $cell.attr('data-y', $("#setup").find("[name=y]").val());
+  $cell.attr('data-bri', $("#setup").find("[name=bri]").val());
+  $cell.attr('data-transitiontime', $("#setup").find("[name=transitiontime]").val());
+  $cell.attr('data-state', 'new');
+  $cell.css('background', rgb)
+  $cell.html('*');
+
+  end:
+  for (var i = (second + 1); i < SECONDS; i++){
+    $child = $("#" + light + '-' + i);
+
+    if (i < (second + tt)){
+      $child.attr('data-transitioningfrom', second);
+      $child.attr('data-state', 'transition');
+      $child.attr('data-x', $("#setup").find("[name=x]").val());
+      $child.attr('data-y', $("#setup").find("[name=y]").val());
+      $child.attr('data-bri', $("#setup").find("[name=bri]").val());
+      $child.html('|')
+      $child.css('background', rgb)
+    } else {
+      switch ($child.attr('data-state')){
+        case 'new':
+          break end;
+        case 'transition':
+        case 'hold':
+          $child.attr('data-transitioningfrom', '');
+          $child.attr('data-state', 'hold');
+          $child.attr('data-x', $("#setup").find("[name=x]").val());
+          $child.attr('data-y', $("#setup").find("[name=y]").val());
+          $child.attr('data-bri', $("#setup").find("[name=bri]").val());
+          $child.css('background', rgb);
+          $child.html('-')
+          break;
+      }
+    }
+  }
+  e.preventDefault();
+}
+
+copy_cell = function(e){
+  light = parseInt($("#setup").find("[name=light]").val(), 10);
+  second = parseInt($("#setup").find("[name=second]").val(), 10);
+
+  new_light = $("#setup").find("[name=copy-light]").val();
+
+  for (k in LIGHTS){
+    if (LIGHTS[k] == new_light) new_light = k;
+  }
+
+  new_second = parseInt($("#setup").find("[name=copy-second]").val(), 10);
+  console.log('copying', light, second, "to", new_light, new_second);
+
+  var $cell = $("#" + light + '-' + second);
+  var $child;
+  var tt = parseInt($("#setup").find("[name=transitiontime]").val(), 10);
+  var x = parseFloat($("#setup").find("[name=x]").val());
+  var y = parseFloat($("#setup").find("[name=y]").val());
+  var bri = parseInt($("#setup").find("[name=bri]").val(), 10);
+  var rgb = xyBriToRgb(x, y, bri)
+
+  load_cell(new_light, new_second);
+  $("#setup").find("[name=transitiontime]").val(tt);
+  $("#setup").find("[name=x]").val(x);
+  $("#setup").find("[name=y]").val(y);
+  $("#setup").find("[name=bri]").val(bri);
+  save_cell();
+}
+
+clear_cell = function(e){
+  light = parseInt($("#setup").find("[name=light]").val(), 10);
+  second = parseInt($("#setup").find("[name=second]").val(), 10);
+  console.log('saving', light, second);
+
+  light_frames[second]["l"+light] = {}
+
+  var $cell = $("#" + light + '-' + second);
+  if (second == 0) return alert("can't clear this cell, just rebuild it");
+
+  var $prev = $("#" + light + '-' + second - 1);
+  var $child;
+
+  var tt = '1'
+  var x = $prev.attr('data-x')
+  var y = $prev.attr('data-y')
+  var bri = $prev.attr('data-bri')
+  var rgb = xyBriToRgb(x, y, bri)
+
+  $cell.attr('data-x', x);
+  $cell.attr('data-y', y);
+  $cell.attr('data-bri', bri);
+  $cell.attr('data-transitiontime', tt);
+  $cell.attr('data-state', 'hold');
+  $cell.css('background', rgb)
+  $cell.html('-');
+
+  end:
+  for (var i = (second + 1); i < SECONDS; i++){
+    $child = $("#" + light + '-' + i);
+    switch ($child.attr('data-state')){
+      case 'new':
+        break end;
+      case 'transition':
+      case 'hold':
+        $child.attr('data-transitioningfrom', '');
+        $child.attr('data-state', 'hold');
+        $child.attr('data-x', x);
+        $child.attr('data-y', y);
+        $child.attr('data-bri', bri);
+        $child.css('background', rgb);
+        $child.html('-')
+        break;
+    }
+  }
+  e.preventDefault();
+}
+
+
+export_frames = function(e){
+  console.log('Exporting all frames')
+  var data = JSON.stringify(light_frames)
+  window.open('data:application/json;charset=utf-8,' + escape(data));
+  e.preventDefault();
+}
+
+
+
+
+import_frames = function(e){
+  var file_handler = e.target.files[0];
+
+    if (file_handler) {
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var contents = e.target.result;
+        light_frames = JSON.parse(contents);
+        rebuild_view();
+      }
+      reader.readAsText(file_handler);
+    } else {
+      alert("Failed to load file");
+  }
+  console.log('starting import of light_frames')
+  e.preventDefault()
+}
+document.getElementById('fileinput').addEventListener('change', import_frames, false);
+
+rebuild_view = function(){
+  var tts = {}, lf;
+
+  for (var j = 1; j <= LIGHTS; j++){
+    tts["l" + j] = {"timeleft": 0, "rgb": "white", "x": "", "y": "", "bri": 0};
+  }
+
+  for (var i = 0; i < SECONDS; i++){ // i is second
+    for (var j = 1; j <= LIGHTS; j++){ // j is light
+      $cell = $("table").find("td#"+ j + '-' + i);
+
+      if (light_frames[i].hasOwnProperty("l" + j)){
+        lf = light_frames[i]["l" + j];
+        if (lf.hasOwnProperty("xy") && lf.hasOwnProperty("bri") && lf.hasOwnProperty("transitiontime")){
+
+            rgb = xyBriToRgb(lf['xy'][0], lf['xy'][0], lf['bri'])
+            tts["l" + j]["timeleft"] = lf['transitiontime'] - 1;
+            tts["l" + j]["rgb"] = rgb;
+            tts["l" + j]["bri"] = lf['bri'];
+            tts["l" + j]["x"] = lf['xy'][0];
+            tts["l" + j]["y"] = lf['xy'][1];
+            tts["l" + j]["transitioningfrom"] = i
+
+            $cell.attr({
+              'data-x': lf['xy'][0],
+              'data-y': lf['xy'][1],
+              'data-bri': lf['bri'],
+              'data-transitiontime': lf['transitiontime'],
+              'data-state': 'new',
+            }).html('*').css('background', rgb);
+        }
+
+      } else {
+        $cell.attr({
+          'data-x': tts["l" + j]['x'],
+          'data-y': tts["l" + j]['y'],
+          'data-bri': tts["l" + j]['bri'],
+        }).css('background', tts["l" + j]['rgb']);
+        if (tts["l" + j]["timeleft"] > 0){
+          $cell.attr({
+            'data-transitioningfrom': lf['transitioningfrom'],
+            'data-state': 'transition'
+          }).html('|');
+          tts["l" + j]["timeleft"] -= 1;
+        } else {
+          $cell.html('-');
+          $cell.attr('data-state', 'hold');
+        }
+      }
+    }
+  }
+  console.log('finished import')
+  e.preventDefault();
+}
+
+//states
+
+//new (new light effect happens here)
+//transition (equal to light transition time, just a signifier)
+//hold (nothing happens)
+
+for(var i = 0; i < SECONDS; i++){
+  light_frames[i] = {};
+  $r = $("<tr><td>"+i+"</td></tr>");
+  for (var j = 0; j < LIGHTS; j++){
+    $d = $("<td></td>");
+    $d.attr('data-x', '');
+    $d.attr('data-state', 'hold')
+    $d.attr('data-transitioningfrom', '')
+    $d.attr('data-transitiontime', '1')
+    $d.attr('data-y', '');
+    $d.attr('data-bri', '');
+    $d.attr('id', (j+1) + '-' + i);
+    $d.attr('-')
+    $d.click(function(){
+      $cell = $(this);
+      var split = $cell.attr('id').split('-')
+      load_cell(split[0], split[1]);
+    });
+    $r.append($d);
+  }
+  $("tbody").append($r);
+}
+
+$("form").submit(save_cell);
+$("#save").click(save_cell);
+$("#clear").click(clear_cell);
+$("#copy").click(copy_cell);
+$("#export").click(export_frames);
+$("#import").click(import_frames);
+
+//Prefill if you click seconds.
+$("thead th").click(function(){$("#setup").find("[name=copy-light]").val($(this).html())})
+$("tr").each(function(){
+  $(this).find('td:first').click(function(){$("#setup").find("[name=copy-second]").val($(this).html())})
+})
+
+</script>
+</body>
+</html>
