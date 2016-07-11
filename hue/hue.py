@@ -30,6 +30,54 @@ class Hue:
     schedules = {}
     config = {}
 
+    def __init__(self, station_ip=None, client_identifier=None):
+        if not station_ip:
+            self.get_station_ip()
+        else:
+            self.station_ip = station_ip
+
+        if not client_identifier:
+            self.get_client_identifier()
+        else:
+            self.client_identifier = client_identifier
+
+        logger.info("Getting Initial Device State")
+        self.get_state()
+
+    def get_station_ip(self):
+         ## Needs more error checking, currently assumes connection will work
+         ## and that returns proper json.
+         logger.info("Getting Station IP")
+         self.station_ip = requests.get('https://www.meethue.com/api/nupnp').json[0]
+
+    def get_client_identifier(self, tries=AUTH_FAILURE_RETRIES):
+        logger.warn("Sending Request for New Client Identifier, Waiting on Button Press.")
+        resp = requests.post("http://{}/api".format(self.station_ip), json={
+            "devicetype":"python-hue#{}".format(socket.getfqdn())
+        })
+        data = resp.json()
+        #try:
+        print data
+        logger.info("New Client Identifier {}".format(self.client_identifier))
+        #except KeyError, exc:
+        #    logger.exception("Could not get client identifier")
+        #    raise ClientException("Could not get client identifier")
+
+        if isinstance(data, list) and data[0].get("error", None):
+            logger.debug(data[0]["error"])
+            if tries:
+                sleep(AUTH_FAILURE_SLEEP)
+                self.get_client_identifier(tries=tries-1)
+            else:
+                raise TooManyFailures()
+
+        try:
+            self.client_identifier = data[0]["success"]["username"]
+        except KeyError:
+            raise ClientException("No client identifier found in response")
+        except IndexError:
+            raise ClientException("No client identifier found in response")
+
     def request(self, *args, **kwargs):
         path = "http://%s/api/%s%s" % (
             self.station_ip,
@@ -118,6 +166,13 @@ class Hue:
         ip = json.loads(response.content)[0]["internalipaddress"]
         self.station_ip = ip
 
+    def set_state(self, state):
+        self.request(
+            path="/",
+            method="PUT",
+            data=json.dumps(state))
+        return self
+
 
 class ExtendedColorLight:
     last_status_time = None
@@ -204,9 +259,12 @@ class ExtendedColorLight:
             {"xy": [xyz[0], xyz[1]], "transitiontime": transitiontime})
 
 
-class TooManyFailures(Exception):
+
+class ClientException(Exception):
     pass
 
+class TooManyFailures(ClientException):
+    pass
 
-class CouldNotAuthenticate(Exception):
+class CouldNotAuthenticate(ClientException):
     pass
